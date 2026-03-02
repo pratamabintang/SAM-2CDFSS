@@ -94,7 +94,7 @@ class Logger:
         if logpath == '': logpath = logtime
 
         cls.logpath = os.path.join('logs', logpath + '.log')
-        cls.benchmark = args.benchmark
+        cls.benchmark = args.benchmark_train
         os.makedirs(cls.logpath)
 
         logging.basicConfig(filemode='w',

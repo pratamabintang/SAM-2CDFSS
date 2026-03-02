@@ -1,15 +1,46 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-
 import logging
+import os
+from contextlib import contextmanager
 
 import torch
-from hydra import compose
+from hydra import compose, initialize_config_dir
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
+
+
+def _resolve_config_dir():
+    """
+    Resolve config directory without relying on Hydra package discovery.
+    Expected structure:
+      <repo_root>/sam2_configs/*.yaml
+    """
+    here = os.path.dirname(os.path.abspath(__file__))          # .../sam2
+    repo_root = os.path.abspath(os.path.join(here, ".."))      # project root
+    config_dir = os.path.join(repo_root, "sam2_configs")
+    if not os.path.isdir(config_dir):
+        raise FileNotFoundError(
+            f"sam2_configs directory not found at: {config_dir}\n"
+            f"Expected: <repo_root>/sam2_configs/<config_file>.yaml"
+        )
+    return config_dir
+
+
+@contextmanager
+def _hydra_config_ctx(config_dir: str):
+    """
+    Hydra must be initialized before compose(). In scripts, Hydra may already be initialized;
+    re-initialization will raise. This context manager avoids hard dependency on external setup.
+    """
+    try:
+        with initialize_config_dir(config_dir=config_dir, version_base=None):
+            yield
+    except ValueError:
+        # Hydra already initialized somewhere else (e.g., another call in the same process).
+        # In that case, we just compose with the existing global hydra state.
+        yield
 
 
 def build_sam2(
@@ -17,9 +48,11 @@ def build_sam2(
     ckpt_path=None,
     device="cuda",
     mode="eval",
-    hydra_overrides_extra=[],
+    hydra_overrides_extra=None,
     apply_postprocessing=True,
 ):
+    if hydra_overrides_extra is None:
+        hydra_overrides_extra = []
 
     if apply_postprocessing:
         hydra_overrides_extra = hydra_overrides_extra.copy()
@@ -29,8 +62,13 @@ def build_sam2(
             "++model.sam_mask_decoder_extra_args.dynamic_multimask_stability_delta=0.05",
             "++model.sam_mask_decoder_extra_args.dynamic_multimask_stability_thresh=0.98",
         ]
-    # Read config and init model
-    cfg = compose(config_name=config_file, overrides=hydra_overrides_extra)
+
+    config_dir = _resolve_config_dir()
+
+    # Read config and init model (no package discovery)
+    with _hydra_config_ctx(config_dir):
+        cfg = compose(config_name=config_file, overrides=hydra_overrides_extra)
+
     OmegaConf.resolve(cfg)
     model = instantiate(cfg.model, _recursive_=True)
     _load_checkpoint(model, ckpt_path)
@@ -45,9 +83,12 @@ def build_sam2_video_predictor(
     ckpt_path=None,
     device="cuda",
     mode="eval",
-    hydra_overrides_extra=[],
+    hydra_overrides_extra=None,
     apply_postprocessing=True,
 ):
+    if hydra_overrides_extra is None:
+        hydra_overrides_extra = []
+
     hydra_overrides = [
         "++model._target_=sam2.sam2_video_predictor.SAM2VideoPredictor",
     ]
@@ -65,8 +106,12 @@ def build_sam2_video_predictor(
         ]
     hydra_overrides.extend(hydra_overrides_extra)
 
-    # Read config and init model
-    cfg = compose(config_name=config_file, overrides=hydra_overrides)
+    config_dir = _resolve_config_dir()
+
+    # Read config and init model (no package discovery)
+    with _hydra_config_ctx(config_dir):
+        cfg = compose(config_name=config_file, overrides=hydra_overrides)
+
     OmegaConf.resolve(cfg)
     model = instantiate(cfg.model, _recursive_=True)
     _load_checkpoint(model, ckpt_path)
@@ -82,8 +127,8 @@ def _load_checkpoint(model, ckpt_path):
         missing_keys, unexpected_keys = model.load_state_dict(sd)
         if missing_keys:
             logging.error(missing_keys)
-            raise RuntimeError()
+            raise RuntimeError("Missing keys when loading checkpoint.")
         if unexpected_keys:
             logging.error(unexpected_keys)
-            raise RuntimeError()
-        logging.info("Loaded checkpoint sucessfully")
+            raise RuntimeError("Unexpected keys when loading checkpoint.")
+        logging.info("Loaded checkpoint successfully")

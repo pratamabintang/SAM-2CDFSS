@@ -175,8 +175,8 @@ def main() -> None:
     parser.add_argument("--datapath_tgt", type=str, default="../CDFSL", help="Path containing target datasets (FSS-1000/, Deepglobe/, ISIC/, LungSegmentation/).")
 
     # Optimization
-    parser.add_argument("--bsz", type=int, default=2)
-    parser.add_argument("--bsz_val", type=int, default=8)
+    parser.add_argument("--bsz", type=int, default=6)
+    parser.add_argument("--bsz_val", type=int, default=6)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--wd", type=float, default=5e-4)
     parser.add_argument("--niter", type=int, default=2000)
@@ -187,7 +187,7 @@ def main() -> None:
     # Runtime
     parser.add_argument("--nworker", type=int, default=4)
     parser.add_argument("--logpath", type=str, default="sam2unet_cdfss")
-    parser.add_argument("--save_every", type=int, default=200)
+    parser.add_argument("--save_every", type=int, default=5)
     parser.add_argument("--dp", action="store_true", help="Enable nn.DataParallel if multiple GPUs")
     parser.add_argument("--write_batch_idx", type=int, default=50)
 
@@ -261,7 +261,7 @@ def main() -> None:
         Logger.tbd_writer.flush()
 
         elapsed = time.time() - start_time
-        if (epoch + 1) % 50 == 0:
+        if (epoch + 1) % 5 == 0:
             Logger.info(f"[time] elapsed {elapsed/3600:.2f}h | best val mIoU {best_val_miou:.2f}")
 
     Logger.tbd_writer.close()
