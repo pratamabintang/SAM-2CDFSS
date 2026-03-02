@@ -5,7 +5,7 @@ import torch
 import numpy as np
 
 
-def fix_randseed(seed):
+def fix_randseed(seed, deterministic: bool = False):
     r""" Set random seeds for reproducibility """
     if seed is None:
         seed = int(random.random() * 1e5)
@@ -14,8 +14,8 @@ def fix_randseed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = not deterministic
+    torch.backends.cudnn.deterministic = deterministic
 
 
 def mean(x):

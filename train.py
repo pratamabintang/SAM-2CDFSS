@@ -91,12 +91,13 @@ def run_epoch(
     scaler: GradScaler | None,
     aux_weight: float,
     write_batch_idx: int,
+    grad_clip: float
 ) -> tuple[float, float, float]:
     """
     Returns:
         avg_loss, miou, fb_iou
     """
-    utils.fix_randseed(None if training else 0)
+    utils.fix_randseed(None if training else 0, deterministic=not training)
 
     if training:
         model.train()
@@ -130,13 +131,23 @@ def run_epoch(
         if training:
             assert optimizer is not None
             optimizer.zero_grad(set_to_none=True)
+
+            # Guard: skip update if loss non-finite
+            if not torch.isfinite(loss):
+                Logger.info(f"[WARN] non-finite loss at epoch={epoch} batch={idx}, skip step")
+                continue
             if amp:
                 assert scaler is not None
                 scaler.scale(loss).backward()
+                if grad_clip and grad_clip > 0:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
                 scaler.step(optimizer)
                 scaler.update()
             else:
                 loss.backward()
+                if grad_clip and grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
                 optimizer.step()
 
         pred_mask = logits.argmax(dim=1)  # (B,H,W)
@@ -182,7 +193,7 @@ def main() -> None:
     parser.add_argument("--niter", type=int, default=2000)
     parser.add_argument("--amp", action="store_true", help="Use torch.cuda.amp mixed precision")
     parser.add_argument("--aux_weight", type=float, default=0.2, help="Deep supervision weight for branch-A/branch-B logits. Set 0 to disable.")
-    parser.add_argument("--grad_clip", type=float, default=0.0)
+    parser.add_argument("--grad_clip", type=float, default=0.5)
 
     # Runtime
     parser.add_argument("--nworker", type=int, default=4)
@@ -233,14 +244,16 @@ def main() -> None:
         trn_loss, trn_miou, trn_fb_iou = run_epoch(
             epoch, model, dataloader_trn, optimizer,
             training=True, amp=args.amp, scaler=scaler,
-            aux_weight=args.aux_weight, write_batch_idx=args.write_batch_idx
+            aux_weight=args.aux_weight, write_batch_idx=args.write_batch_idx,
+            grad_clip=args.grad_clip,
         )
 
         with torch.no_grad():
             val_loss, val_miou, val_fb_iou = run_epoch(
                 epoch, model, dataloader_val, optimizer=None,
                 training=False, amp=args.amp, scaler=None,
-                aux_weight=0.0, write_batch_idx=max(1, args.write_batch_idx // 5)
+                aux_weight=0.0, write_batch_idx=max(1, args.write_batch_idx // 5),
+                grad_clip=0.0,
             )
 
         # Save best by mIoU

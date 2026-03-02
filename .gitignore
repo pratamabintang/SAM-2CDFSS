@@ -3,3 +3,4 @@ SAM2UNet.py
 dataset/*
 model/*
 logs/*
+spare*
