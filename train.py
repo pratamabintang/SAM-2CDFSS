@@ -2,10 +2,6 @@
 """
 Train SAM2UNetCDFSSAggressive on episodic few-shot segmentation (CD-FSS style).
 
-This script is designed to live in the *root* of the SAM2-UNet repo after you
-copy the patch files. It reuses PATNet's dataset + evaluation code (vendored
-under ./data and ./common).
-
 Source-domain meta-train example:
   - Train benchmark: pascal (VOC2012 + SegmentationClassAug)
   - Val benchmark:   fss (FSS-1000) or deepglobe/isic/lung
